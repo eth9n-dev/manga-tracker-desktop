@@ -44,6 +44,7 @@ class Home(QWidget):
 
         self.setLayout(self.master)
     
+    # Create database
     def initDB(self):
         self.db = QtSql.QSqlDatabase.addDatabase('QSQLITE')
         self.db.setDatabaseName('collections.sqlite')
@@ -69,34 +70,36 @@ class Home(QWidget):
 
         self.db.close()
 
+    # Window settings
     def settings(self):
         self.setWindowTitle("MyMangaList")
         self.setGeometry(250, 250, 600, 500)
 
+    # Clear view
+    def clearView(self):
+        for i in reversed(range(self.col2.count())):
+            self.col2.itemAt(i).widget().setParent(None)
+    
+    # Handle button clicks
     def clickEvents(self):
         self.home_button.clicked.connect(self.homePage)
         self.list_button.clicked.connect(self.listPage)
         self.create_list_button.clicked.connect(self.createList)
 
+    # Views
     def homePage(self):
-        for i in reversed(range(self.col2.count())):
-            self.col2.itemAt(i).widget().setParent(None)
-        
+        self.clearView()
         self.col2.addWidget(self.welcome_message)
 
     def listPage(self):
-        self.welcome_message.setParent(None)
-
-        for i in reversed(range(self.col2.count())):
-            self.col2.itemAt(i).widget().setParent(None)
-        
+        self.clearView()
         self.db.open()
 
         query = QtSql.QSqlQuery()
 
-        query.exec("SELECT * FROM LISTS")
+        query.exec("SELECT list_name, list_id FROM LISTS")
         while (query.next()):
-            btn = QPushButton(query.value(1))
+            btn = QPushButton(query.value(0), clicked=lambda checked, arg = query.value(1) : self.viewList(arg))
             self.col2.addWidget(btn)
 
         self.db.close()
@@ -118,11 +121,14 @@ class Home(QWidget):
                 list_id = 0
 
             query.exec(f"""INSERT INTO LISTS (list_id, list_name)
-                    VALUES ({list_id}, {name})
+                    VALUES ({list_id}, "{name}")
             ;""")
 
             self.db.close()
             self.listPage()
+        
+    def viewList(self, id):
+        self.clearView()
         
 
 if __name__ in "__main__":
