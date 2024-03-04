@@ -1,5 +1,7 @@
+import requests, string, webbrowser
+
 from PyQt6.QtWidgets import *
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 from PyQt6 import QtGui, QtSql
 
 class Home(QWidget):
@@ -17,13 +19,17 @@ class Home(QWidget):
         self.home_button = QPushButton("Home")
         self.list_button = QPushButton("My Lists")
         self.create_list_button = QPushButton("Create List")
+        self.add_manga_button = QPushButton("Add Manga")
         self.empty_label = QLabel("")
         self.empty_label2 = QLabel("")
+        self.empty_label3 = QLabel("")
+        logoImage = QtGui.QPixmap("logo.png")
+        self.logo = QLabel(alignment = Qt.AlignmentFlag.AlignCenter)
+        self.logo.setPixmap(logoImage)
 
         self.welcome_message = QLabel("MyMangaList allows you to store and track all your manga easily in one place.\nStart tracking your manga now by clicking 'Create List'!",
                                       alignment = Qt.AlignmentFlag.AlignCenter)
         self.welcome_message.setFont(QtGui.QFont("Sanserif"))
-        self.welcome_message.setStyleSheet("border: 1px solid black;")
 
         self.container = QWidget()
 
@@ -32,13 +38,20 @@ class Home(QWidget):
         col1 = QVBoxLayout()
         self.col2 = QVBoxLayout()
 
+        # Side Bar
         col1.addWidget(self.home_button)
         col1.addWidget(self.list_button)
         col1.addWidget(self.create_list_button)
+        col1.addWidget(self.add_manga_button)
         col1.addWidget(self.empty_label)
 
+        # Main View
+        self.col2.addWidget(self.empty_label2)
+        self.col2.addWidget(self.logo)
         self.col2.addWidget(self.welcome_message)
-
+        self.col2.addWidget(self.empty_label3)
+ 
+        # App Layout
         self.master.addLayout(col1, 20)
         self.master.addLayout(self.col2, 80)
 
@@ -65,6 +78,7 @@ class Home(QWidget):
                 manga_name TEXT,
                 current_chapter INTEGER,
                 url TEXT,
+                cover_data TEXT,
                 FOREIGN KEY (list_id) REFERENCES LISTS(list_id)
         );""")
 
@@ -85,11 +99,16 @@ class Home(QWidget):
         self.home_button.clicked.connect(self.homePage)
         self.list_button.clicked.connect(self.listPage)
         self.create_list_button.clicked.connect(self.createList)
+        self.add_manga_button.clicked.connect(self.addManga)
 
     # Views
     def homePage(self):
         self.clearView()
+
+        self.col2.addWidget(self.empty_label2)
+        self.col2.addWidget(self.logo)
         self.col2.addWidget(self.welcome_message)
+        self.col2.addWidget(self.empty_label3)
 
     def listPage(self):
         self.clearView()
@@ -99,7 +118,7 @@ class Home(QWidget):
 
         query.exec("SELECT list_name, list_id FROM LISTS")
         while (query.next()):
-            btn = QPushButton(query.value(0), clicked=lambda checked, arg = query.value(1) : self.viewList(arg))
+            btn = QPushButton(query.value(0), clicked = lambda checked, arg = query.value(1) : self.viewList(arg))
             self.col2.addWidget(btn)
 
         self.db.close()
@@ -122,14 +141,108 @@ class Home(QWidget):
 
             query.exec(f"""INSERT INTO LISTS (list_id, list_name)
                     VALUES ({list_id}, "{name}")
-            ;""")
+                    ;""")
 
             self.db.close()
             self.listPage()
         
     def viewList(self, id):
+        self.db.open()
         self.clearView()
+
+        query = QtSql.QSqlQuery()
+        query.exec(f"SELECT * FROM MANGA WHERE list_id = {id}")
+
+        while (query.next()):
+            button = QPushButton(query.value(1), clicked = lambda checked, arg = query.value(3) : self.openLink(arg))
+            r = requests.get(query.value(4))
+            pixmap = QtGui.QPixmap()
+            pixmap.loadFromData(r.content)
+            icon = QtGui.QIcon(pixmap)
+            button.setIcon(icon)
+            button.setIconSize(QSize(100, 155))
+
+            self.col2.addWidget(button)
+
+        self.col2.addWidget(self.empty_label2)
+        self.db.close()
         
+
+    def addManga(self):
+        # Create dialog for input
+        dialog = QInputDialog()
+        dialog.setWindowTitle("Add Manga")
+        self.db.open()
+        
+        url, done = dialog.getText(self, 'Add Manga', 'Manga URL:')
+
+        if url and done:
+            title = self.getTitle(url)
+            cover = self.getCover(title)
+            
+            # Dialog to know what list to add to
+            dialog2 = QInputDialog()
+            dialog2.setWindowTitle("Add Manga")
+
+            # Get a list of all manga lists
+            query = QtSql.QSqlQuery()
+            query.exec("SELECT list_name FROM LISTS")
+
+            items = []
+
+            while (query.next()):
+                items.append(query.value(0))
+
+            listName, done = dialog2.getItem(self, 'Add Manga', 'Choose a List:', items)
+
+            if listName and done:
+                # Find ID based on list name
+                query.exec(f"SELECT list_id FROM LISTS WHERE list_name = '{listName}'")
+                
+                while (query.next()):
+                    listId = query.value(0)
+
+                query.exec(f'INSERT INTO MANGA (`list_id`, `manga_name`, `current_chapter`, `url`, `cover_data`) VALUES ({listId}, "{title}", 0, "{url}", "{cover}")')
+
+        self.db.close()
+
+        
+    def getTitle(self, url : str):
+        title = url.split('/')[-2]
+        title = title.replace('-', ' ')
+        
+        stopwords = ['series', 'comic', 'manhwa']
+        title = title.split()
+        resultwords = [word for word in title if word.lower() not in stopwords]
+        result = ' '.join(resultwords)
+
+        return string.capwords(result)
+
+    def getCover(self, title):
+        base_url = "https://api.mangadex.org"
+
+        # Get MangaID
+        r = requests.get(
+            f"{base_url}/manga",
+            params={"title": title}
+        )
+
+        j = r.json()
+        id = j['data'][0]['id']
+
+        # Get CoverID
+        r2 = requests.get(f"{base_url}/manga/{id}?includes[]=cover_art")
+        
+        j2 = r2.json()
+        for i in j2['data']['relationships']:
+            if i['type'] == 'cover_art':
+                coverId = i['attributes']['fileName']
+
+        return (f"https://uploads.mangadex.org/covers/{id}/{coverId}.256.jpg")
+        
+
+    def openLink(self, url):
+        webbrowser.open(url)
 
 if __name__ in "__main__":
     app = QApplication([])
