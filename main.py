@@ -131,7 +131,6 @@ class Home(QWidget):
             self.db.open()
             
             query = QtSql.QSqlQuery()
-
             query.exec("SELECT COUNT(*) FROM LISTS")
             
             if (query.next()):
@@ -149,21 +148,56 @@ class Home(QWidget):
     def viewList(self, id):
         self.db.open()
         self.clearView()
-
+        
         query = QtSql.QSqlQuery()
         query.exec(f"SELECT * FROM MANGA WHERE list_id = {id}")
 
+        container = QWidget()
+        contentBox = QVBoxLayout()
+        contentBox.setAlignment(Qt.AlignmentFlag.AlignTop)
+        scrollArea = QScrollArea()
+
+        container.setLayout(contentBox)
+        scrollArea.setWidget(container)
+        scrollArea.setWidgetResizable(True)
+
         while (query.next()):
+            card = QWidget()
+            card.setMaximumHeight(150)
             button = QPushButton(query.value(1), clicked = lambda checked, arg = query.value(3) : self.openLink(arg))
+            button2 = QPushButton("Update Current Chapter", clicked = lambda checked, arg = query.value(0), arg2 = query.value(1) : self.editChapterNumber(arg, arg2))
+            button3 = QPushButton("Delete Manga", clicked = lambda checked, arg = query.value(0), arg2 = query.value(1) : self.deleteEntry(arg, arg2))
+            chapterNum = QLabel(f"Current Chapter: {query.value(2)}")
+            chapterNum.setFont(QtGui.QFont('Sanserif', 15))
+            
             r = requests.get(query.value(4))
+            
             pixmap = QtGui.QPixmap()
             pixmap.loadFromData(r.content)
-            icon = QtGui.QIcon(pixmap)
-            button.setIcon(icon)
-            button.setIconSize(QSize(100, 155))
+            
+            image = QLabel()
+            image.setPixmap(pixmap)
+            image.setScaledContents(True)
+            image.setMaximumSize(100, 150)
+            
+            layout = QHBoxLayout()
+            col1 = QVBoxLayout()
+            col2 = QVBoxLayout()
+            col2.setAlignment(Qt.AlignmentFlag.AlignTop)
+            
+            layout.addLayout(col1)
+            layout.addLayout(col2)
+            
+            col1.addWidget(image)
+            col2.addWidget(button, 25)
+            col2.addWidget(chapterNum, 50)
+            col2.addWidget(button2, 12)
+            col2.addWidget(button3, 12)
+            
+            card.setLayout(layout)
+            contentBox.addWidget(card)
 
-            self.col2.addWidget(button)
-
+        self.col2.addWidget(scrollArea)
         self.col2.addWidget(self.empty_label2)
         self.db.close()
         
@@ -240,6 +274,34 @@ class Home(QWidget):
 
         return (f"https://uploads.mangadex.org/covers/{id}/{coverId}.256.jpg")
         
+    def editChapterNumber(self, id : int, title : str):
+        dialog = QInputDialog()
+        dialog.setWindowTitle("Edit Chapter Number")
+        self.db.open()
+
+        newChapter, done = dialog.getInt(self, "Edit Chapter Number", "Chapter Number:")
+
+        if newChapter and done:
+            query = QtSql.QSqlQuery()
+            query.exec(f"UPDATE MANGA SET current_chapter = {newChapter} WHERE manga_name = '{title}' AND list_id = {id}")
+        
+        self.db.close()
+        self.viewList(id)
+
+    def deleteEntry(self, id, title):
+        messageBox = QMessageBox(QMessageBox.Icon.Warning, "Delete Manga", "Are you sure you want to delete this manga?")
+        messageBox.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+        messageBox.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        self.db.open()
+        
+        value = messageBox.exec()
+
+        if value == QMessageBox.StandardButton.Yes:
+            query = QtSql.QSqlQuery()
+            query.exec(f"DELETE FROM MANGA WHERE manga_name = '{title}' AND list_id = {id}")
+
+        self.db.close()
+        self.viewList(id)
 
     def openLink(self, url):
         webbrowser.open(url)
