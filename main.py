@@ -20,6 +20,12 @@ class Home(QWidget):
         self.list_button = QPushButton("My Lists")
         self.create_list_button = QPushButton("Create List")
         self.add_manga_button = QPushButton("Add Manga")
+        self.gif_label = QLabel()
+        gif = QtGui.QMovie('mascot.gif')
+        self.gif_label.setMovie(gif)
+        self.gif_label.setScaledContents(True)
+        self.gif_label.setMaximumSize(125, 159)
+        gif.start()
         self.empty_label = QLabel("")
         self.empty_label2 = QLabel("")
         self.empty_label3 = QLabel("")
@@ -32,7 +38,6 @@ class Home(QWidget):
         self.welcome_message.setFont(QtGui.QFont("Sanserif"))
 
         self.container = QWidget()
-
         self.master = QHBoxLayout(self.container)
 
         col1 = QVBoxLayout()
@@ -44,6 +49,7 @@ class Home(QWidget):
         col1.addWidget(self.create_list_button)
         col1.addWidget(self.add_manga_button)
         col1.addWidget(self.empty_label)
+        col1.addWidget(self.gif_label)
 
         # Main View
         self.col2.addWidget(self.empty_label2)
@@ -101,7 +107,7 @@ class Home(QWidget):
         self.create_list_button.clicked.connect(self.createList)
         self.add_manga_button.clicked.connect(self.addManga)
 
-    # Views
+    # Home page view
     def homePage(self):
         self.clearView()
 
@@ -110,6 +116,7 @@ class Home(QWidget):
         self.col2.addWidget(self.welcome_message)
         self.col2.addWidget(self.empty_label3)
 
+    # List page view
     def listPage(self):
         self.clearView()
         self.db.open()
@@ -124,6 +131,7 @@ class Home(QWidget):
         self.db.close()
         self.col2.addWidget(self.empty_label2)
 
+    # Create list functionality
     def createList(self):
         name, done = QInputDialog().getText(self, 'Create List', 'Enter the name of your list:')
 
@@ -144,7 +152,8 @@ class Home(QWidget):
 
             self.db.close()
             self.listPage()
-        
+    
+    # View specific list
     def viewList(self, id):
         self.db.open()
         self.clearView()
@@ -161,13 +170,18 @@ class Home(QWidget):
         scrollArea.setWidget(container)
         scrollArea.setWidgetResizable(True)
 
+        deleteButton = QPushButton("Delete this List", clicked = lambda checked, arg = id : self.deleteList(arg))
+        deleteButton.setStyleSheet("background-color: #f44336;")
+
         while (query.next()):
             card = QWidget()
             card.setMaximumHeight(150)
             button = QPushButton(query.value(1), clicked = lambda checked, arg = query.value(3) : self.openLink(arg))
             button2 = QPushButton("Update Current Chapter", clicked = lambda checked, arg = query.value(0), arg2 = query.value(1) : self.editChapterNumber(arg, arg2))
             button3 = QPushButton("Delete Manga", clicked = lambda checked, arg = query.value(0), arg2 = query.value(1) : self.deleteEntry(arg, arg2))
+            button3.setStyleSheet("background-color: #f44336; border-radius: 8px")
             chapterNum = QLabel(f"Current Chapter: {query.value(2)}")
+            chapterNum.setAlignment(Qt.AlignmentFlag.AlignCenter)
             chapterNum.setFont(QtGui.QFont('Sanserif', 15))
             
             r = requests.get(query.value(4))
@@ -196,12 +210,12 @@ class Home(QWidget):
             
             card.setLayout(layout)
             contentBox.addWidget(card)
-
+        
         self.col2.addWidget(scrollArea)
-        self.col2.addWidget(self.empty_label2)
+        self.col2.addWidget(deleteButton)
         self.db.close()
         
-
+    # Add manga to list functionality
     def addManga(self):
         # Create dialog for input
         dialog = QInputDialog()
@@ -213,6 +227,10 @@ class Home(QWidget):
         if url and done:
             title = self.getTitle(url)
             cover = self.getCover(title)
+
+            # Ensure we don't add invalid data
+            if cover == None:
+                return
             
             # Dialog to know what list to add to
             dialog2 = QInputDialog()
@@ -240,7 +258,7 @@ class Home(QWidget):
 
         self.db.close()
 
-        
+    # Strip and prepare title for db
     def getTitle(self, url : str):
         title = url.split('/')[-2]
         title = title.replace('-', ' ')
@@ -252,6 +270,7 @@ class Home(QWidget):
 
         return string.capwords(result)
 
+    # Retrieve cover art through mangadex api
     def getCover(self, title):
         base_url = "https://api.mangadex.org"
 
@@ -260,6 +279,11 @@ class Home(QWidget):
             f"{base_url}/manga",
             params={"title": title}
         )
+
+        if (r.status_code == 404 or r.status_code == 503):
+            messageBox = QMessageBox(QMessageBox.Icon.Warning, "API Warning", "The MangaDex API is currently down, try again later.", QMessageBox.StandardButton.Ok)
+            messageBox.exec()
+            return None
 
         j = r.json()
         id = j['data'][0]['id']
@@ -273,7 +297,8 @@ class Home(QWidget):
                 coverId = i['attributes']['fileName']
 
         return (f"https://uploads.mangadex.org/covers/{id}/{coverId}.256.jpg")
-        
+    
+    # Edit chapter number in db
     def editChapterNumber(self, id : int, title : str):
         dialog = QInputDialog()
         dialog.setWindowTitle("Edit Chapter Number")
@@ -288,6 +313,7 @@ class Home(QWidget):
         self.db.close()
         self.viewList(id)
 
+    # Delete manga in db
     def deleteEntry(self, id, title):
         messageBox = QMessageBox(QMessageBox.Icon.Warning, "Delete Manga", "Are you sure you want to delete this manga?")
         messageBox.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
@@ -303,6 +329,22 @@ class Home(QWidget):
         self.db.close()
         self.viewList(id)
 
+    # Delete list in db
+    def deleteList(self, id):
+        self.db.open()
+
+        messageBox = QMessageBox(QMessageBox.Icon.Warning, "Delete List", "Are you sure you want to delete this list?")
+        messageBox.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
+        messageBox.setDefaultButton(QMessageBox.StandardButton.Cancel)
+        
+        if messageBox.exec() == QMessageBox.StandardButton.Yes:
+            query = QtSql.QSqlQuery()
+            query.exec(f"DELETE FROM LISTS WHERE list_id = {id}")
+
+        self.listPage()
+        self.db.close()
+
+    # Open manga website
     def openLink(self, url):
         webbrowser.open(url)
 
