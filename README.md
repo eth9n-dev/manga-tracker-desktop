@@ -1,4 +1,4 @@
-# Manga Tracker Desktop
+# Manga Tracker Desktop 📚
 
 Manga Tracker Desktop is a user-friendly application that enables users to organize and track their manga entries from manhwatop.com. Keep tabs on your reading progress, group manga into custom lists, and enjoy a seamless manga management experience on your desktop.
 
@@ -26,11 +26,13 @@ Manga Tracker Desktop is a user-friendly application that enables users to organ
 
 5. Update your reading progress as you go.
 
+## Planned Features
+
+1. Integration with other manga websites.
+
 ## Acknowledgments
 
 - The Manga Tracker Desktop project is developed and maintained by [eth9n-dev](https://github.com/eth9n-dev).
-
-- Special thanks to the open-source community for their contributions and support.
 
 - Reading bear GIF by [tkthao219](https://tenor.com/view/tkthao219-bubududu-peach-goma-gif-25251841).
 
