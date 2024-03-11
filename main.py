@@ -1,11 +1,11 @@
-import requests, string, webbrowser
+import requests, string, webbrowser, uuid, asyncio
 
-from PyQt6.QtWidgets import *
-from PyQt6.QtCore import Qt, QSize
+from update_check import isUpToDate
+from PyQt6.QtWidgets import QPushButton, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QInputDialog, QScrollArea, QMessageBox, QApplication
+from PyQt6.QtCore import Qt
 from PyQt6 import QtGui, QtSql
 
 class Home(QWidget):
-
     # Constructor
     def __init__(self):
         super().__init__()
@@ -14,6 +14,8 @@ class Home(QWidget):
         self.clickEvents()
         self.initDB()
 
+        asyncio.run(self.checkForUpdate())
+
     # Objects and Design
     def initUI(self):
         self.home_button = QPushButton("Home")
@@ -21,7 +23,7 @@ class Home(QWidget):
         self.create_list_button = QPushButton("Create List")
         self.add_manga_button = QPushButton("Add Manga")
         self.gif_label = QLabel()
-        gif = QtGui.QMovie('mascot.gif')
+        gif = QtGui.QMovie('_internal/mascot.gif')
         self.gif_label.setMovie(gif)
         self.gif_label.setScaledContents(True)
         self.gif_label.setMaximumSize(125, 159)
@@ -29,7 +31,7 @@ class Home(QWidget):
         self.empty_label = QLabel("")
         self.empty_label2 = QLabel("")
         self.empty_label3 = QLabel("")
-        logoImage = QtGui.QPixmap("logo.png")
+        logoImage = QtGui.QPixmap("_internal/logo.png")
         self.logo = QLabel(alignment = Qt.AlignmentFlag.AlignCenter)
         self.logo.setPixmap(logoImage)
 
@@ -142,7 +144,7 @@ class Home(QWidget):
             query.exec("SELECT COUNT(*) FROM LISTS")
             
             if (query.next()):
-                list_id = query.value(0)
+                list_id = uuid.uuid4().int>>64
             else:
                 list_id = 0
 
@@ -225,6 +227,12 @@ class Home(QWidget):
         url, done = dialog.getText(self, 'Add Manga', 'Manga URL:')
 
         if url and done:
+            # Check for valid URL
+            if "manhwatop.com/manga/" not in url:
+                messageBox = QMessageBox(QMessageBox.Icon.Warning, "Invalid Input", "The url entered was not a valid manhwatop.com link.", QMessageBox.StandardButton.Ok)
+                messageBox.exec()
+                return
+
             title = self.getTitle(url)
             cover = self.getCover(title)
 
@@ -255,6 +263,7 @@ class Home(QWidget):
                     listId = query.value(0)
 
                 query.exec(f'INSERT INTO MANGA (`list_id`, `manga_name`, `current_chapter`, `url`, `cover_data`) VALUES ({listId}, "{title}", 0, "{url}", "{cover}")')
+                self.viewList(listId)
 
         self.db.close()
 
@@ -347,6 +356,16 @@ class Home(QWidget):
     # Open manga website
     def openLink(self, url):
         webbrowser.open(url)
+
+    # Check for updates
+    async def checkForUpdate(self):
+        if isUpToDate('_internal/main.py', 'https://raw.githubusercontent.com/eth9n-dev/manga-tracker-desktop/main/main.py') == False:
+            await asyncio.sleep(0.1)
+            
+            messageBox = QMessageBox(QMessageBox.Icon.Information, "Update Available", "A new update is available, get it <a href='https://github.com/eth9n-dev/manga-tracker-desktop/releases'>here</a>")
+            messageBox.setStandardButtons(QMessageBox.StandardButton.Ok)
+            messageBox.exec()
+
 
 if __name__ in "__main__":
     app = QApplication([])
