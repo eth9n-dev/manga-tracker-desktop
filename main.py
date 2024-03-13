@@ -1,15 +1,16 @@
-import requests, string, webbrowser, uuid, asyncio
+import requests, string, webbrowser, uuid, asyncio, configparser
 
 from update_check import isUpToDate
-from PyQt6.QtWidgets import QPushButton, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QInputDialog, QScrollArea, QMessageBox, QApplication
+from PyQt6.QtWidgets import QPushButton, QWidget, QLabel, QVBoxLayout, QHBoxLayout, QInputDialog, QScrollArea, QMessageBox, QApplication, QColorDialog
 from PyQt6.QtCore import Qt
 from PyQt6 import QtGui, QtSql
 
 class Home(QWidget):
     # Constructor
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
         self.initUI()
+        self.configurationSetup()
         self.settings()
         self.clickEvents()
         self.initDB()
@@ -17,11 +18,12 @@ class Home(QWidget):
         asyncio.run(self.checkForUpdate())
 
     # Objects and Design
-    def initUI(self):
+    def initUI(self) -> None:
         self.home_button = QPushButton("Home")
         self.list_button = QPushButton("My Lists")
         self.create_list_button = QPushButton("Create List")
         self.add_manga_button = QPushButton("Add Manga")
+        self.settings_button = QPushButton("Settings")
         self.gif_label = QLabel()
         gif = QtGui.QMovie('_internal/mascot.gif')
         self.gif_label.setMovie(gif)
@@ -50,6 +52,7 @@ class Home(QWidget):
         col1.addWidget(self.list_button)
         col1.addWidget(self.create_list_button)
         col1.addWidget(self.add_manga_button)
+        col1.addWidget(self.settings_button)
         col1.addWidget(self.empty_label)
         col1.addWidget(self.gif_label)
 
@@ -66,7 +69,7 @@ class Home(QWidget):
         self.setLayout(self.master)
     
     # Create database
-    def initDB(self):
+    def initDB(self) -> None:
         self.db = QtSql.QSqlDatabase.addDatabase('QSQLITE')
         self.db.setDatabaseName('collections.sqlite')
 
@@ -93,24 +96,58 @@ class Home(QWidget):
         self.db.close()
 
     # Window settings
-    def settings(self):
+    def settings(self) -> None:
         self.setWindowTitle("MyMangaList")
         self.setGeometry(250, 250, 600, 500)
 
+        buttonColor = self.readConfig()
+        self.setStyleSheet(f"QPushButton {{ background-color : {buttonColor} }}")
+
+    # Create file to store user preferences
+    def configurationSetup(self) -> None:
+        config = configparser.ConfigParser()
+        
+        if not config.read('preferences.ini'):
+            config['COLORS'] = {'Buttons' : 'white'}
+            config.write(open('preferences.ini', 'w'))
+        
+    # Read config file
+    def readConfig(self) -> str:
+        config = configparser.ConfigParser()
+
+        if config.read('preferences.ini'):
+            color = config['COLORS']['Buttons']
+            return color
+
+        return 'white'
+
+    # Edit current config settings
+    def editConfig(self, newColor : str) -> None:
+        config = configparser.ConfigParser()
+        config.read('preferences.ini')
+        config.set('COLORS', 'Buttons', newColor)
+
+        with open('preferences.ini', 'w') as configFile:
+            config.write(configFile)
+
+        configFile.close()
+        self.settings()
+
     # Clear view
-    def clearView(self):
+    def clearView(self) -> None:
         for i in reversed(range(self.col2.count())):
             self.col2.itemAt(i).widget().setParent(None)
     
     # Handle button clicks
-    def clickEvents(self):
+    def clickEvents(self) -> None:
         self.home_button.clicked.connect(self.homePage)
         self.list_button.clicked.connect(self.listPage)
         self.create_list_button.clicked.connect(self.createList)
         self.add_manga_button.clicked.connect(self.addManga)
+        self.settings_button.clicked.connect(self.settingsView)
 
     # Home page view
-    def homePage(self):
+    def homePage(self) -> None:
         self.clearView()
 
         self.col2.addWidget(self.empty_label2)
@@ -119,7 +156,7 @@ class Home(QWidget):
         self.col2.addWidget(self.empty_label3)
 
     # List page view
-    def listPage(self):
+    def listPage(self) -> None:
         self.clearView()
         self.db.open()
 
@@ -134,7 +171,7 @@ class Home(QWidget):
         self.col2.addWidget(self.empty_label2)
 
     # Create list functionality
-    def createList(self):
+    def createList(self) -> None:
         name, done = QInputDialog().getText(self, 'Create List', 'Enter the name of your list:')
 
         if done and name:
@@ -156,7 +193,7 @@ class Home(QWidget):
             self.listPage()
     
     # View specific list
-    def viewList(self, id):
+    def viewList(self, id : int) -> None:
         self.db.open()
         self.clearView()
         
@@ -216,9 +253,27 @@ class Home(QWidget):
         self.col2.addWidget(scrollArea)
         self.col2.addWidget(deleteButton)
         self.db.close()
+    
+    # Settings view
+    def settingsView(self) -> None:
+        self.clearView()
+
+        buttonColorSetting = QPushButton('Button Color')
+        buttonColorSetting.clicked.connect(self.setColorSetting)
         
+        self.col2.addWidget(buttonColorSetting)
+        self.col2.addWidget(self.empty_label2)
+
+
+    # Color picker
+    def setColorSetting(self) -> None:
+        color = QColorDialog.getColor()
+
+        if color.isValid():
+            self.editConfig(color.name())
+
     # Add manga to list functionality
-    def addManga(self):
+    def addManga(self) -> None:
         # Create dialog for input
         dialog = QInputDialog()
         dialog.setWindowTitle("Add Manga")
@@ -272,7 +327,7 @@ class Home(QWidget):
         title = url.split('/')[-2]
         title = title.replace('-', ' ')
         
-        stopwords = ['series', 'comic', 'manhwa']
+        stopwords = ['series', 'comic', 'manhwa', 'manhua']
         title = title.split()
         resultwords = [word for word in title if word.lower() not in stopwords]
         result = ' '.join(resultwords)
@@ -280,7 +335,7 @@ class Home(QWidget):
         return string.capwords(result)
 
     # Retrieve cover art through mangadex api
-    def getCover(self, title):
+    def getCover(self, title : str) -> str:
         base_url = "https://api.mangadex.org"
 
         # Get MangaID
@@ -308,7 +363,7 @@ class Home(QWidget):
         return (f"https://uploads.mangadex.org/covers/{id}/{coverId}.256.jpg")
     
     # Edit chapter number in db
-    def editChapterNumber(self, id : int, title : str):
+    def editChapterNumber(self, id : int, title : str) -> None:
         dialog = QInputDialog()
         dialog.setWindowTitle("Edit Chapter Number")
         self.db.open()
@@ -323,7 +378,7 @@ class Home(QWidget):
         self.viewList(id)
 
     # Delete manga in db
-    def deleteEntry(self, id, title):
+    def deleteEntry(self, id : int, title :  str) -> None:
         messageBox = QMessageBox(QMessageBox.Icon.Warning, "Delete Manga", "Are you sure you want to delete this manga?")
         messageBox.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel)
         messageBox.setDefaultButton(QMessageBox.StandardButton.Cancel)
@@ -339,7 +394,7 @@ class Home(QWidget):
         self.viewList(id)
 
     # Delete list in db
-    def deleteList(self, id):
+    def deleteList(self, id : int) -> None:
         self.db.open()
 
         messageBox = QMessageBox(QMessageBox.Icon.Warning, "Delete List", "Are you sure you want to delete this list?")
@@ -354,11 +409,11 @@ class Home(QWidget):
         self.db.close()
 
     # Open manga website
-    def openLink(self, url):
+    def openLink(self, url : str) -> None:
         webbrowser.open(url)
 
     # Check for updates
-    async def checkForUpdate(self):
+    async def checkForUpdate(self) -> None:
         if isUpToDate('_internal/main.py', 'https://raw.githubusercontent.com/eth9n-dev/manga-tracker-desktop/main/main.py') == False:
             await asyncio.sleep(0.1)
             
